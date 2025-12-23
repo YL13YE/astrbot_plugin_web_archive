@@ -26,7 +26,7 @@
   },
   "is_save_image": {
     "description": "是否开启存储图片（需要占用大量磁盘）",
-    "type": "boolean",
+    "type": "bool",
     "hint": "必填"
   },
   "image_save_path": {

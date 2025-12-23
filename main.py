@@ -1,3 +1,4 @@
+from astrbot import logger
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.api import AstrBotConfig
@@ -70,7 +71,7 @@ class MySQLPlugin(Star):
                                          )
                                          """)
         except Exception as e:
-            self.context.logger.error(f"插件初始化失败: {str(e)}")
+            logger.error(f"插件初始化失败: {str(e)}")
             raise
 
     async def _process_image(self, url: str) -> Optional[str]:
@@ -103,7 +104,7 @@ class MySQLPlugin(Star):
 
                     if result:
                         # 3.1 存在：直接返回 Hash，不再下载
-                        self.context.logger.debug(f"图片已存在，Hash: {sha256_hash}")
+                        logger.debug(f"图片已存在，Hash: {sha256_hash}")
                         return sha256_hash
                     else:
                         # 3.2 不存在：保存文件并入库
@@ -138,11 +139,11 @@ class MySQLPlugin(Star):
                                                  datetime.datetime.now()
                                              ))
 
-                        self.context.logger.info(f"新图片已归档: {sha256_hash}")
+                        logger.info(f"新图片已归档: {sha256_hash}")
                         return sha256_hash
 
         except Exception as e:
-            self.context.logger.error(f"处理图片出错 {url}: {e}")
+            logger.error(f"处理图片出错 {url}: {e}")
             return None
 
     @filter.event_message_type(filter.EventMessageType.ALL)
@@ -195,7 +196,7 @@ class MySQLPlugin(Star):
                                          ))
 
         except Exception as e:
-            self.context.logger.error(f"日志记录异常: {e}")
+            logger.error(f"日志记录异常: {e}")
 
     async def terminate(self):
         if self.pool:
