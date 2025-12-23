@@ -23,5 +23,14 @@
     "description": "password",
     "type": "string",
     "hint": "必填"
+  },
+  "is_save_image": {
+    "description": "是否开启存储图片（需要占用大量磁盘）",
+    "type": "bool",
+    "hint": "必填"
+  },
+  "image_save_path": {
+    "description": "图片存储路径",
+    "type": "string"
   }
 }

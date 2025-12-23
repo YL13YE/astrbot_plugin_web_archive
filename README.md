@@ -23,3 +23,26 @@ create table messages
 ) engine = InnoDB;
 
 ```
+# 1.1.0 
+支持存储图片和时间戳
+
+## 迁移方案
+### A 
+删除以前message表，更新代码后重启，回自动建表
+
+### B
+1. 创建新表 image_assets
+```sql
+CREATE TABLE IF NOT EXISTS image_assets (
+    image_hash    VARCHAR(64) PRIMARY KEY,
+    file_path     TEXT NOT NULL,
+    file_size     INT,
+    created_time  DATETIME NOT NULL
+);
+```
+2. 修改 messages 表
+```sql
+# 添加两个新字段 
+ALTER TABLE messages ADD COLUMN image_ids JSON;
+ALTER TABLE messages ADD COLUMN created_time DATETIME;
+```

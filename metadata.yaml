@@ -1,5 +1,5 @@
 name: mysql_logger
 desc: MySQL存储聊天记录,群史官
-version: v1.0
+version: v1.1.0
 author: LW
-repo: https://github.com/LWWD/bot_mysql
+repo: https://github.com/LWWD/astrbot_plugin_sql_history
