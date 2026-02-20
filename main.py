@@ -68,7 +68,6 @@ class MySQLPlugin(Star):
         except Exception as e:
             logger.error(f"保存白名单失败: {e}")
 
-
     async def _init_db_and_tasks(self):
         try:
             logger.info("正在初始化 MySQL 连接...")
@@ -88,7 +87,7 @@ class MySQLPlugin(Star):
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     # 读取外部 SQL 文件
-                    sql_file_path = Path(__file__).parent / "init.sql" # 确保路径正确
+                    sql_file_path = Path(__file__).parent / "init.sql" 
                     if sql_file_path.exists():
                         async with aiofiles.open(sql_file_path, mode='r', encoding='utf-8') as f:
                             content = await f.read()
@@ -124,7 +123,7 @@ class MySQLPlugin(Star):
         app.router.add_static('/static/', path=static_dir, name='static')
         
         app.router.add_get('/', self.web_index)
-        app.router.add_post('/api/groups', self.web_api_groups)     
+        app.router.add_post('/api/groups', self.web_api_groups)    
         app.router.add_post('/api/messages', self.web_api_messages) 
         app.router.add_get('/media/image/{hash}', self.web_media_image)
         app.router.add_get('/media/video/{hash}', self.web_media_video)
@@ -134,7 +133,7 @@ class MySQLPlugin(Star):
         await self.web_runner.setup()
         self.site = web.TCPSite(self.web_runner, '0.0.0.0', self.web_port)
         try:
-            await site.start()
+            await self.site.start() 
             logger.info(f">>> 内置 WebUI 已启动！请在浏览器访问: http://127.0.0.1:{self.web_port}")
         except Exception as e:
             logger.error(f"WebUI 端口 {self.web_port} 被占用或启动失败: {e}")
@@ -148,7 +147,6 @@ class MySQLPlugin(Star):
                 content_type='text/html'
             )
             
-        
         admin_qq = str(self.config.get("admin_qq", "")).strip()
         async with aiofiles.open(index_path, mode='r', encoding='utf-8') as f:
             html_content = await f.read()
@@ -186,7 +184,6 @@ class MySQLPlugin(Star):
         async with self.pool.acquire() as conn:
             async with conn.cursor(DictCursor) as cursor:
                 # 从数据库直接提取群号和群名的映射关系
-                
                 await cursor.execute("""
                     SELECT group_id, MAX(group_name) as group_name 
                     FROM messages 
@@ -409,9 +406,7 @@ class MySQLPlugin(Star):
                     group_name = self.group_name_cache[target_id]
                 else:
                     try:
-                        # 确保当前平台是支持 OneBot 协议的平台 (如 aiocqhttp)
                         if hasattr(event, 'bot') and hasattr(event.bot, 'api'):
-                            
                             payloads = {
                                 "group_id": int(msg.group_id),
                                 "no_cache": False
@@ -419,7 +414,6 @@ class MySQLPlugin(Star):
                             api_ret = await event.bot.api.call_action('get_group_info', **payloads)
                             
                             if api_ret and isinstance(api_ret, dict):
-                                # 提取数据 (兼容 {"status": "ok", "data": {"group_name": "..."}} 格式)
                                 data_dict = api_ret.get("data", api_ret) 
                                 fetched_name = data_dict.get("group_name")
                                 
@@ -441,11 +435,9 @@ class MySQLPlugin(Star):
                         group_name = target_id
                         self.group_name_cache[target_id] = target_id
             
-
             if sender_id and target_id:
                 if sender_id not in self.qq_group_map:
                     self.qq_group_map[sender_id] = []
-                # 只要发现这个人在新群里说话了，立刻拉入白名单并保存到本地 JSON
                 if target_id not in self.qq_group_map[sender_id]:
                     self.qq_group_map[sender_id].append(target_id)
                     self._save_whitelist()
@@ -453,7 +445,6 @@ class MySQLPlugin(Star):
             image_hashes, video_hashes = [], []
             comp_types = []
             
-            # --- 原始数据预处理 ---
             raw_data = msg.raw_message
             if isinstance(raw_data, str):
                 try:
@@ -461,7 +452,6 @@ class MySQLPlugin(Star):
                 except:
                     pass
             
-            # --- 【拦截器】：优雅处理系统通知 (Notice) ---
             is_notice = False
             final_message_str = event.message_str.strip()
             
@@ -481,16 +471,13 @@ class MySQLPlugin(Star):
                 elif notice_type == "notify" and raw_data.get("sub_type") == "poke":
                     final_message_str = "[拍了拍/戳一戳]"
                 
-                # --- 撤回防丢失 & 数据库反查昵称功能 ---
                 elif notice_type in ["group_recall", "friend_recall"]:
                     operator_id = raw_data.get("operator_id")
                     user_id = raw_data.get("user_id")
                     recalled_msg_id = raw_data.get("message_id")
                     
-                    # 默认先用框架自带的昵称，如果没有就用 QQ 号保底
                     recalled_nickname = getattr(msg.sender, 'nickname', None) or str(user_id)
                     
-                    # 去我们自己的数据库里，捞出被撤回那条消息对应的真实历史昵称
                     if recalled_msg_id:
                         try:
                             async with self.pool.acquire() as conn:
@@ -515,7 +502,6 @@ class MySQLPlugin(Star):
                 else:
                     final_message_str = f"[群系统通知: {notice_type}]"
 
-            # --- 如果是常规聊天消息，再去解析并下载媒体文件 ---
             if not is_notice:
                 if isinstance(raw_data, dict) and "message" in raw_data:
                     raw_data = raw_data["message"]
@@ -547,7 +533,6 @@ class MySQLPlugin(Star):
                                 h = await self._process_video(url, msg_month)
                                 if h: video_hashes.append(h)
 
-                # 框架组件兜底抓取
                 if not image_hashes and not video_hashes:
                     for component in msg.message:
                         comp_types.append(type(component).__name__.lower())
@@ -557,7 +542,6 @@ class MySQLPlugin(Star):
                                 h = await self._process_video(url, msg_month)
                                 if h: video_hashes.append(h)
 
-                # 文本清洗与空白兜底逻辑
                 if image_hashes or video_hashes:
                     final_message_str = re.sub(r'\[(File|Video|Image|文件|视频|图片|不支持的格式.*?)\]', '', final_message_str, flags=re.IGNORECASE).strip()
 
@@ -576,17 +560,14 @@ class MySQLPlugin(Star):
                     else:
                         final_message_str = f"[特殊互动格式: {','.join(set(comp_types))}]"
 
-            # 统一收集发件人信息
             sender_data = {
                 'user_id': msg.sender.user_id,
                 'nickname': msg.sender.nickname,
                 'platform_id': getattr(meta, 'id', 'unknown')
             }
 
-            # 执行入库
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
-                    #  修改点：增加了 group_name 字段及其占位符 %s
                     await cursor.execute("""
                         INSERT INTO messages (message_id, platform_type, self_id, session_id, group_id, group_name,
                                               sender, message_str, raw_message, image_ids, video_ids,
@@ -598,7 +579,7 @@ class MySQLPlugin(Star):
                         event.get_self_id() if hasattr(event, 'get_self_id') else msg.self_id,
                         event.session_id,
                         msg.group_id or None,
-                        group_name,                                  #  传入提取到的群名
+                        group_name,                                          
                         json.dumps(sender_data, ensure_ascii=False),
                         final_message_str,
                         json.dumps(msg.raw_message, ensure_ascii=False),
@@ -636,17 +617,18 @@ class MySQLPlugin(Star):
                         image_ids = json.loads(image_ids_json or "[]")
                         video_ids = json.loads(video_ids_json or "[]")
                         for img_hash in image_ids:
-                            await self._delete_asset_if_unused("image_assets", "image_hash", img_hash)
+                            await self._delete_asset_if_unused("image_assets", "image_hash", "image_ids", img_hash)
                         for vid_hash in video_ids:
-                            await self._delete_asset_if_unused("video_assets", "video_hash", vid_hash)
+                            await self._delete_asset_if_unused("video_assets", "video_hash", "video_ids", vid_hash)
 
                     await cursor.execute("DELETE FROM messages WHERE month=%s", (month,))
                     logger.info(f"自动删除未保存月份消息: {month}")
 
-    async def _delete_asset_if_unused(self, table: str, hash_column: str, asset_hash: str):
+    
+    async def _delete_asset_if_unused(self, table: str, hash_column: str, msg_ids_column: str, asset_hash: str):
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                await cursor.execute(f"SELECT COUNT(*) FROM messages WHERE JSON_CONTAINS({hash_column.replace('_assets','_ids')}, %s)", (json.dumps(asset_hash),))
+                await cursor.execute(f"SELECT COUNT(*) FROM messages WHERE JSON_CONTAINS({msg_ids_column}, %s)", (json.dumps(asset_hash),))
                 count = (await cursor.fetchone())[0]
                 if count == 0:
                     await cursor.execute(f"SELECT file_path FROM {table} WHERE {hash_column}=%s", (asset_hash,))
@@ -679,10 +661,20 @@ class MySQLPlugin(Star):
             logger.error(f"标记保存失败: {e}")
             yield event.plain_result("指令执行失败，请检查控制台报错。")
 
+    
     async def terminate(self):
+        if getattr(self, "site", None):
+            try:
+                await self.site.stop()
+            except Exception:
+                pass
+                
         if getattr(self, "web_runner", None):
-            await self.web_runner.cleanup()
-            logger.info("内置 WebUI 已安全关闭")
+            try:
+                await self.web_runner.cleanup()
+                logger.info("内置 WebUI 已安全关闭")
+            except Exception:
+                pass
             
         if getattr(self, "pool", None):
             self.pool.close()
