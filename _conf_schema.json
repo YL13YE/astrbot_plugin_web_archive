@@ -1,0 +1,74 @@
+{
+  "admin_qq": {
+    "description": "管理员 QQ 号",
+    "type": "string",
+    "hint": "必填"
+  },
+  "admin_pwd": {
+    "description": "管理员 QQ 号 对应登录密码",
+    "type": "string",
+    "hint": "必填"
+  },
+  "web_port": {
+    "description": "WebUI 端口",
+    "type": "string",
+    "hint": "必填",
+    "default": "8055"
+  },
+  "host": {
+    "description": "数据库 host",
+    "type": "string",
+    "hint": "必填"
+  },
+  "port": {
+    "description": "数据库端口",
+    "type": "int",
+    "hint": "必填",
+    "default": "3306"
+  },
+  "database": {
+    "description": "数据库名称",
+    "type": "string",
+    "hint": "必填"
+  },
+  "username": {
+    "description": "数据库用户名",
+    "type": "string",
+    "hint": "必填"
+  },
+  "password": {
+    "description": "数据库密码",
+    "type": "string",
+    "hint": "必填"
+  },
+  "is_save_image": {
+    "description": "是否开启存储图片（需要占用大量磁盘）",
+    "type": "bool",
+    "hint": "必填"
+  },
+  "image_save_path": {
+    "description": "图片存储路径",
+    "type": "string",
+    "hint": "可选"
+  },
+  "is_save_video": {
+    "description": "是否开启存储视频（可能占用大量磁盘）",
+    "type": "bool",
+    "hint": "必填"
+  },
+  "video_save_path": {
+    "description": "视频存储路径",
+    "type": "string",
+    "hint": "可选"
+  },
+  "auto_cleanup": {
+    "description": "是否开启自动清理超过保留期的消息",
+    "type": "bool",
+    "hint": "必填"
+  },
+  "keep_days": {
+    "description": "保留消息的天数，超过将被自动清理（单位：天）",
+    "type": "int",
+    "hint": "必填"
+  }
+}

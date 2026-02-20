@@ -1,0 +1,5 @@
+name: web_archive
+desc: MySQL存储聊天记录+webui浏览
+version: v1.0.0
+author: yueye109
+repo: https://github.com/YL13YE/astrbot_plugin_web_archive

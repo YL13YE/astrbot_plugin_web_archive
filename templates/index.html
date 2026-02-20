@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WEB_ARCHIVE</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(156, 163, 175, 0.5); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(107, 114, 128, 0.8); }
+        input[type="date"]::-webkit-clear-button { display: none; }
+        input[type="date"]::-webkit-inner-spin-button { display: none; } 
+        video { background-color: #f3f4f6; }
+        
+        .chat-msg { overflow-anchor: none; }
+        .media-placeholder { min-height: 120px; background-color: rgba(229, 231, 235, 0.4); }
+
+        .side-bg {
+            background-color: #e5e7eb;
+            background-image: url('/static/bg2.jpg'), url('/static/bg2.jpg'), url('/static/bg2.jpg');
+            background-position: left center, center, right center;
+            background-repeat: no-repeat, no-repeat, no-repeat;
+            background-attachment: fixed, fixed, fixed;
+            background-size: auto 100vh, auto 100vh, auto 100vh;
+        }
+    </style>
+</head>
+<body class="side-bg flex flex-col h-screen font-sans text-gray-800 overflow-x-hidden">
+
+    <div id="time-scrollbar" class="fixed bottom-12 right-6 z-[45] h-[35vh] min-h-[200px] hidden flex-col justify-between items-center py-2 transition-opacity duration-500 group/timeline">
+        <div class="absolute top-3 bottom-3 w-[2px] bg-gradient-to-b from-white/0 via-white/60 to-white/0 backdrop-blur-sm rounded-full shadow-[0_0_5px_rgba(255,255,255,0.3)]"></div>
+        
+        <div class="time-node z-10 w-3 h-3 rounded-full bg-white/30 border-[1.5px] border-white/80 backdrop-blur-md shadow-[0_2px_8px_rgba(0,0,0,0.08)] hover:bg-white hover:scale-[1.5] transition-all duration-300 cursor-pointer relative" data-time="00:00:00">
+            <span class="absolute right-5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-600 opacity-0 group-hover/timeline:opacity-100 transition-all duration-300 whitespace-nowrap bg-white/50 px-1.5 py-0.5 rounded backdrop-blur-md border border-white/60 shadow-sm tracking-widest">00:00</span>
+        </div>
+        <div class="time-node z-10 w-2.5 h-2.5 rounded-full bg-white/30 border-[1.5px] border-white/80 backdrop-blur-md shadow-[0_2px_8px_rgba(0,0,0,0.08)] hover:bg-white hover:scale-[1.5] transition-all duration-300 cursor-pointer relative" data-time="06:00:00">
+            <span class="absolute right-5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-600 opacity-0 group-hover/timeline:opacity-100 transition-all duration-300 whitespace-nowrap bg-white/50 px-1.5 py-0.5 rounded backdrop-blur-md border border-white/60 shadow-sm tracking-widest">06:00</span>
+        </div>
+        <div class="time-node z-10 w-3 h-3 rounded-full bg-white/30 border-[1.5px] border-white/80 backdrop-blur-md shadow-[0_2px_8px_rgba(0,0,0,0.08)] hover:bg-white hover:scale-[1.5] transition-all duration-300 cursor-pointer relative" data-time="12:00:00">
+            <span class="absolute right-5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-600 opacity-0 group-hover/timeline:opacity-100 transition-all duration-300 whitespace-nowrap bg-white/50 px-1.5 py-0.5 rounded backdrop-blur-md border border-white/60 shadow-sm tracking-widest">12:00</span>
+        </div>
+        <div class="time-node z-10 w-2.5 h-2.5 rounded-full bg-white/30 border-[1.5px] border-white/80 backdrop-blur-md shadow-[0_2px_8px_rgba(0,0,0,0.08)] hover:bg-white hover:scale-[1.5] transition-all duration-300 cursor-pointer relative" data-time="18:00:00">
+            <span class="absolute right-5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-600 opacity-0 group-hover/timeline:opacity-100 transition-all duration-300 whitespace-nowrap bg-white/50 px-1.5 py-0.5 rounded backdrop-blur-md border border-white/60 shadow-sm tracking-widest">18:00</span>
+        </div>
+        <div class="time-node z-10 w-3 h-3 rounded-full bg-white/30 border-[1.5px] border-white/80 backdrop-blur-md shadow-[0_2px_8px_rgba(0,0,0,0.08)] hover:bg-white hover:scale-[1.5] transition-all duration-300 cursor-pointer relative" data-time="23:59:59">
+            <span class="absolute right-5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-600 opacity-0 group-hover/timeline:opacity-100 transition-all duration-300 whitespace-nowrap bg-white/50 px-1.5 py-0.5 rounded backdrop-blur-md border border-white/60 shadow-sm tracking-widest">Now</span>
+        </div>
+    </div>
+
+    <div id="expand-handle" class="fixed top-12 right-0 z-[60] bg-white/40 backdrop-blur-md shadow-sm py-6 px-1 rounded-l-md cursor-pointer transition-all duration-300 hover:bg-white/80 hover:px-2 border-y border-l border-white/50 flex items-center group">
+        <div class="w-1 h-8 bg-gray-400/50 rounded-full group-hover:bg-gray-500 transition-colors"></div>
+    </div>
+
+    <div id="control-panel" class="fixed top-6 right-6 z-50 flex flex-col bg-white/70 backdrop-blur-xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] rounded-2xl p-5 border border-white/60 transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] w-[220px] translate-x-[150%] opacity-0">
+        <div class="flex justify-between items-center mb-4">
+            <label class="text-[10px] text-gray-400 font-extrabold uppercase tracking-widest">控制中枢</label>
+            <button id="close-panel" class="text-gray-400 hover:text-gray-700 font-bold px-1 rounded hover:bg-gray-100 transition-colors" title="收起面板">✕</button>
+        </div>
+
+        <div id="panel-auth-section" class="flex flex-col gap-3">
+            <p class="text-xs text-gray-600 font-bold mb-1" id="panel-auth-msg">请输入通行证</p>
+            <input type="text" id="auth-qq" placeholder="输入 QQ 号" class="bg-white/50 border border-white/60 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 text-gray-800 font-bold placeholder-gray-500 transition-all text-center tracking-wider shadow-inner">
+            <input type="password" id="auth-pwd" placeholder="管理员密码" class="bg-white/50 border border-white/60 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 text-gray-800 font-bold placeholder-gray-500 transition-all text-center tracking-wider shadow-inner hidden">
+            <button id="auth-btn" class="bg-gray-800 hover:bg-black text-white text-sm font-bold py-2 rounded-xl transition-all shadow-sm mt-1">验证进入</button>
+        </div>
+
+        <div id="panel-data-section" class="flex flex-col gap-4 hidden">
+            <select id="group-filter" class="bg-transparent text-gray-700 font-bold text-sm focus:outline-none cursor-pointer appearance-none truncate w-full border-b border-gray-300 pb-1">
+                <option value="" disabled selected>👇 选择群聊/会话</option>
+            </select>
+            <div class="flex flex-col">
+                <label class="text-[10px] text-gray-400 font-extrabold mb-1.5 uppercase tracking-widest">日期过滤</label>
+                <input type="date" id="date-filter" class="bg-transparent text-gray-700 font-bold text-sm focus:outline-none cursor-pointer w-full border-b border-gray-300 pb-1">
+            </div>
+            <button id="logout-btn" class="text-xs font-bold text-red-400 hover:text-red-600 text-left transition-colors mt-2">退出登录</button>
+        </div>
+    </div>
+
+    <main class="flex-1 overflow-y-auto p-2 md:p-4 pt-8 flex justify-center scroller">
+        <div id="chat-container" class="w-[95%] max-w-4xl space-y-8 pb-16 p-4 md:p-8 min-h-[85vh] transition-all duration-500">
+        </div>
+    </main>
+
+    <script>
+        // ==========================================
+        const ADMIN_QQ = "1092764407"; 
+        // ==========================================
+
+        const authSection = document.getElementById('panel-auth-section');
+        const dataSection = document.getElementById('panel-data-section');
+        const authQqInput = document.getElementById('auth-qq');
+        const authPwdInput = document.getElementById('auth-pwd');
+        const authBtn = document.getElementById('auth-btn');
+        const panelAuthMsg = document.getElementById('panel-auth-msg');
+        const logoutBtn = document.getElementById('logout-btn');
+
+        const chatContainer = document.getElementById('chat-container');
+        const groupFilter = document.getElementById('group-filter');
+        const dateFilter = document.getElementById('date-filter');
+        const mainArea = document.querySelector('main');
+        const timeScrollbar = document.getElementById('time-scrollbar');
+        
+        const controlPanel = document.getElementById('control-panel');
+        const expandHandle = document.getElementById('expand-handle');
+        const closePanelBtn = document.getElementById('close-panel');
+        
+        let latestMessageId = null;
+
+        // --- 交互逻辑 ---
+        function hidePanel() {
+            controlPanel.classList.add('translate-x-[150%]', 'opacity-0');
+            expandHandle.classList.remove('translate-x-full');
+        }
+        function showPanel() {
+            controlPanel.classList.remove('translate-x-[150%]', 'opacity-0');
+            expandHandle.classList.add('translate-x-full');
+        }
+        expandHandle.addEventListener('click', showPanel);
+        closePanelBtn.addEventListener('click', hidePanel);
+
+        document.addEventListener('click', (event) => {
+            if (!controlPanel.classList.contains('translate-x-[150%]') && !controlPanel.contains(event.target) && !expandHandle.contains(event.target)) hidePanel();
+        });
+
+        function setTodayDate() {
+            const today = new Date();
+            dateFilter.value = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+        }
+
+        // --- 时间轴快速滑动点击逻辑 ---
+        document.querySelectorAll('.time-node').forEach(node => {
+            node.addEventListener('click', (e) => {
+                const targetTime = e.currentTarget.dataset.time;
+                const messages = Array.from(document.querySelectorAll('.chat-msg'));
+                if (messages.length === 0) return;
+
+                // 如果点击 24:00，直接一脚油门滚到底部
+                if (targetTime === "23:59:59") {
+                    mainArea.scrollTo({ top: mainArea.scrollHeight, behavior: 'smooth' });
+                    return;
+                }
+
+                // 否则，从上往下找，找到第一条时间大于等于目标时间的消息
+                let targetEl = messages[messages.length - 1]; 
+                for (let msg of messages) {
+                    if (msg.dataset.time >= targetTime) {
+                        targetEl = msg;
+                        break;
+                    }
+                }
+                
+                targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
+        });
+
+        // --- 登录逻辑 ---
+        authQqInput.addEventListener('input', (e) => {
+            if (e.target.value.trim() === ADMIN_QQ) authPwdInput.classList.remove('hidden');
+            else { authPwdInput.classList.add('hidden'); authPwdInput.value = ''; }
+        });
+
+        authBtn.addEventListener('click', () => {
+            const qq = authQqInput.value.trim();
+            const pwd = authPwdInput.value.trim();
+            if (!qq) return;
+            localStorage.setItem('auth_qq', qq); localStorage.setItem('auth_pwd', pwd);
+            authBtn.textContent = "验证中...";
+            loadGroups(); 
+        });
+
+        logoutBtn.addEventListener('click', () => {
+            localStorage.removeItem('auth_qq'); localStorage.removeItem('auth_pwd');
+            clearChatContainer();
+            authSection.classList.remove('hidden'); dataSection.classList.add('hidden');
+            authQqInput.value = ''; authPwdInput.value = ''; authPwdInput.classList.add('hidden');
+            panelAuthMsg.textContent = "请输入通行证"; panelAuthMsg.className = "text-xs text-gray-600 font-bold mb-1 transition-colors";
+            authBtn.textContent = "验证进入";
+        });
+
+        async function loadGroups() {
+            const savedQq = localStorage.getItem('auth_qq');
+            const savedPwd = localStorage.getItem('auth_pwd');
+            if (!savedQq) { setTimeout(showPanel, 600); return; }
+
+            try {
+                const response = await fetch('/api/groups', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ qq: savedQq, pwd: savedPwd })
+                });
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    authSection.classList.add('hidden'); dataSection.classList.remove('hidden');
+                    const groups = result.data;
+                    while (groupFilter.options.length > 1) groupFilter.remove(1);
+
+                    groups.forEach(groupObj => {
+                        const option = document.createElement('option');
+                        option.value = groupObj.id; 
+                        //const prefix = groupObj.id.length > 15 ? '会话' : '群';
+                        
+                        if (groupObj.name !== groupObj.id) {
+                            option.textContent = `${groupObj.name} (${groupObj.id})`;
+                        } else {
+                            option.textContent = `${groupObj.id}`;
+                        }
+                        groupFilter.appendChild(option);
+                    });
+
+                    const pathGroupId = window.location.pathname.replace('/', '');
+                    if (pathGroupId && groups.some(g => g.id === pathGroupId)) groupFilter.value = pathGroupId;
+                    else if (groups.length === 1) groupFilter.value = groups[0].id;
+
+                    if (groupFilter.value) loadMessages();
+                } else {
+                    panelAuthMsg.textContent = result.message || "验证失败"; panelAuthMsg.className = "text-xs text-red-500 font-bold mb-1 transition-colors";
+                    authBtn.textContent = "验证进入";
+                    localStorage.removeItem('auth_qq'); localStorage.removeItem('auth_pwd');
+                    authSection.classList.remove('hidden'); dataSection.classList.add('hidden');
+                    showPanel();
+                }
+            } catch (error) { showPanel(); }
+        }
+
+        async function loadMessages() {
+            const targetId = groupFilter.value;
+            if (!targetId) return clearChatContainer();
+
+            const savedQq = localStorage.getItem('auth_qq');
+            const savedPwd = localStorage.getItem('auth_pwd');
+            
+            try {
+                const response = await fetch('/api/messages', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ limit: 1000, qq: savedQq, pwd: savedPwd, target_id: targetId, date: dateFilter.value })
+                });
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    const messages = result.data.reverse();
+                    if (messages.length > 0) latestMessageId = messages[messages.length - 1].message_id;
+                    renderMessages(messages);
+                }
+            } catch (error) { console.error("加载消息失败", error); }
+        }
+
+        groupFilter.addEventListener('change', () => {
+            loadMessages();
+            if (groupFilter.value) window.history.pushState(null, '', '/' + groupFilter.value);
+            setTimeout(hidePanel, 300); 
+        });
+        dateFilter.addEventListener('change', loadMessages);
+
+        async function pollNewMessages() {
+            const targetId = groupFilter.value;
+            const savedQq = localStorage.getItem('auth_qq');
+            const savedPwd = localStorage.getItem('auth_pwd');
+            if (!targetId || !savedQq) return;
+
+            try {
+                const response = await fetch('/api/messages', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ limit: 1, qq: savedQq, pwd: savedPwd, target_id: targetId, date: dateFilter.value })
+                });
+                const result = await response.json();
+                
+                if (result.status === 'success' && result.data.length > 0) {
+                    const currentLatestId = result.data[0].message_id;
+                    if (currentLatestId !== latestMessageId) loadMessages(); 
+                }
+            } catch (error) {}
+        }
+        setInterval(pollNewMessages, 3000);
+
+        function clearChatContainer() {
+            chatContainer.innerHTML = '';
+            timeScrollbar.classList.add('hidden');
+            timeScrollbar.classList.remove('flex');
+        }
+
+        function renderMessages(messages) {
+            if (messages.length === 0) return clearChatContainer();
+
+            // 动态显示或隐藏时间轴
+            timeScrollbar.classList.remove('hidden');
+            timeScrollbar.classList.add('flex');
+
+            let allMessagesHtml = ''; 
+
+            messages.forEach(msg => {
+                const isSelf = msg.platform_type === 'console';
+                const alignClass = isSelf ? 'items-end' : 'items-start';
+                const timeOnly = msg.created_time.split(' ')[1]; // 提取时分秒
+
+                let textBubbleHtml = '';
+                if (msg.message_str && msg.message_str.trim() !== '') {
+                    const bubbleBg = isSelf ? 'bg-[#e9f0fb]' : 'bg-white';
+                    const roundedClass = isSelf ? 'rounded-2xl rounded-tr-sm' : 'rounded-2xl rounded-tl-sm';
+                    textBubbleHtml = `<div class="${bubbleBg} backdrop-blur-sm p-3.5 ${roundedClass} shadow-sm border border-transparent hover:border-gray-200 transition-colors"><p class="text-gray-800 whitespace-pre-wrap break-words leading-relaxed text-[15px]">${msg.message_str}</p></div>`;
+                }
+
+                let mediaHtml = '';
+                if (msg.image_ids?.length > 0) msg.image_ids.forEach(hash => mediaHtml += `<img src="/media/image/${hash}" loading="lazy" class="block max-w-[280px] md:max-w-[450px] rounded-2xl cursor-zoom-in shadow-sm my-1 media-placeholder" onclick="window.open(this.src, '_blank')"/>`);
+                if (msg.video_ids?.length > 0) msg.video_ids.forEach(hash => mediaHtml += `<video src="/media/video/${hash}" controls preload="none" class="block max-w-[320px] md:max-w-[500px] rounded-2xl shadow-sm my-1"></video>`);
+
+                // 给每个消息框悄悄加上 data-time 属性，作为进度条的“路标”
+                allMessagesHtml += `
+                    <div class="flex flex-col ${alignClass} mb-6 group select-none chat-msg" data-time="${timeOnly}">
+                        <div class="flex items-baseline space-x-2 px-1 mb-1.5 transition-opacity">
+                            <span class="text-sm font-bold text-black truncate max-w-[150px] drop-shadow-[0_0_3px_rgba(255,255,255,1)]">${msg.sender.nickname || '未知'}</span>
+                            <span class="text-xs text-gray-500 font-mono ">${timeOnly.substring(0, 5)}</span>
+                        </div>
+                        <div class="flex flex-col space-y-2 ${alignClass} max-w-[85%]">${textBubbleHtml}${mediaHtml}</div>
+                    </div>`;
+            });
+
+            // 滚动需求逻辑
+            const currentGroup = groupFilter.value;
+            const currentDate = dateFilter.value;
+            const isFirstLoad = !chatContainer.dataset.rendered;
+            
+            const groupChanged = chatContainer.dataset.lastGroup !== currentGroup;
+            const dateChanged = chatContainer.dataset.lastDate !== currentDate;
+
+            const oldScrollTop = mainArea.scrollTop;
+            const oldScrollHeight = mainArea.scrollHeight;
+            const isAtBottom = oldScrollHeight - oldScrollTop - mainArea.clientHeight < 150;
+
+            // 1. 瞬间替换 HTML 节点
+            chatContainer.innerHTML = allMessagesHtml;
+
+            //  2. 高效滚动逻辑：利用原生渲染帧
+            if (isFirstLoad || groupChanged) {
+                // 立即进行一次初步触底
+                mainArea.scrollTop = mainArea.scrollHeight;
+                
+                // 监听浏览器的下一次“页面重绘”瞬间，完成精准触底 (性能开销极低，无感顺滑)
+                requestAnimationFrame(() => {
+                    mainArea.scrollTop = mainArea.scrollHeight;
+                    // 再套一层以防复杂的 DOM 树需要两帧才能完全撑开高度
+                    requestAnimationFrame(() => {
+                        mainArea.scrollTop = mainArea.scrollHeight;
+                    });
+                });
+            } else if (dateChanged) {
+                // 切换日期，瞬间回到顶部
+                mainArea.scrollTop = 0;
+            } else if (isAtBottom) {
+                // 有新消息且在底部时，顺滑跟进
+                requestAnimationFrame(() => {
+                    mainArea.scrollTo({ top: mainArea.scrollHeight, behavior: 'smooth' });
+                });
+            } else {
+                // 翻看历史记录时，死死锁住当前阅读位置
+                mainArea.scrollTop = oldScrollTop;
+            }
+
+            // 打上标签供下次比对
+            chatContainer.dataset.lastGroup = currentGroup;
+            chatContainer.dataset.lastDate = currentDate;
+            chatContainer.dataset.rendered = "true";
+        }
+
+        window.onload = () => { setTodayDate(); loadGroups(); };
+    </script>
+</body>
+</html>
