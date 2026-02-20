@@ -1,5 +1,5 @@
-name: web_archive
-desc: MySQL存储聊天记录+webui浏览
+name: astrbot_plugin_web_archive
+desc: 基于 MySQL 8 的全功能聊天记录存档插件。不仅是冷冰冰的聊天日志，更是一个 WebUI 的消息画廊。一切撤回，统统绳之以法！
 version: v1.0.0
 author: yueye109
 repo: https://github.com/YL13YE/astrbot_plugin_web_archive
