@@ -147,7 +147,13 @@ class MySQLPlugin(Star):
                 text="<h1>找不到前端页面！</h1><p>请确保你在插件目录下创建了 <code>templates/index.html</code> 文件。</p>", 
                 content_type='text/html'
             )
-        return web.FileResponse(str(index_path))
+            
+        
+        admin_qq = str(self.config.get("admin_qq", "")).strip()
+        async with aiofiles.open(index_path, mode='r', encoding='utf-8') as f:
+            html_content = await f.read()
+        html_content = html_content.replace("{{ADMIN_QQ}}", admin_qq)
+        return web.Response(text=html_content, content_type='text/html')
 
     # ---  接口 1：安全获取有权限的群组列表 ---
     async def web_api_groups(self, request: web.Request):
