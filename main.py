@@ -68,7 +68,6 @@ class MySQLPlugin(Star):
         except Exception as e:
             logger.error(f"保存白名单失败: {e}")
 
-
     async def _init_db_and_tasks(self):
         try:
             logger.info("正在初始化 MySQL 连接...")
@@ -88,7 +87,7 @@ class MySQLPlugin(Star):
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     # 读取外部 SQL 文件
-                    sql_file_path = Path(__file__).parent / "init.sql" # 确保路径正确
+                    sql_file_path = Path(__file__).parent / "init.sql" 
                     if sql_file_path.exists():
                         async with aiofiles.open(sql_file_path, mode='r', encoding='utf-8') as f:
                             content = await f.read()
@@ -124,7 +123,7 @@ class MySQLPlugin(Star):
         app.router.add_static('/static/', path=static_dir, name='static')
         
         app.router.add_get('/', self.web_index)
-        app.router.add_post('/api/groups', self.web_api_groups)     
+        app.router.add_post('/api/groups', self.web_api_groups)    
         app.router.add_post('/api/messages', self.web_api_messages) 
         app.router.add_get('/media/image/{hash}', self.web_media_image)
         app.router.add_get('/media/video/{hash}', self.web_media_video)
@@ -134,7 +133,7 @@ class MySQLPlugin(Star):
         await self.web_runner.setup()
         self.site = web.TCPSite(self.web_runner, '0.0.0.0', self.web_port)
         try:
-            await site.start()
+            await self.site.start() 
             logger.info(f">>> 内置 WebUI 已启动！请在浏览器访问: http://127.0.0.1:{self.web_port}")
         except Exception as e:
             logger.error(f"WebUI 端口 {self.web_port} 被占用或启动失败: {e}")
@@ -147,7 +146,12 @@ class MySQLPlugin(Star):
                 text="<h1>找不到前端页面！</h1><p>请确保你在插件目录下创建了 <code>templates/index.html</code> 文件。</p>", 
                 content_type='text/html'
             )
-        return web.FileResponse(str(index_path))
+            
+        admin_qq = str(self.config.get("admin_qq", "")).strip()
+        async with aiofiles.open(index_path, mode='r', encoding='utf-8') as f:
+            html_content = await f.read()
+        html_content = html_content.replace("{{ADMIN_QQ}}", admin_qq)
+        return web.Response(text=html_content, content_type='text/html')
 
     # ---  接口 1：安全获取有权限的群组列表 ---
     async def web_api_groups(self, request: web.Request):
@@ -180,7 +184,6 @@ class MySQLPlugin(Star):
         async with self.pool.acquire() as conn:
             async with conn.cursor(DictCursor) as cursor:
                 # 从数据库直接提取群号和群名的映射关系
-                
                 await cursor.execute("""
                     SELECT group_id, MAX(group_name) as group_name 
                     FROM messages 
@@ -393,53 +396,37 @@ class MySQLPlugin(Star):
             sender_id = str(msg.sender.user_id)
             target_id = str(msg.group_id) if msg.group_id else str(event.session_id)
             
+            # ==========================================
+            # 1. 提取与缓存群名 
+            # ==========================================
+            if not hasattr(self, 'group_name_cache'):
+                self.group_name_cache = {}
+                
             group_name = getattr(msg, 'group_name', None)
             
             if not group_name and msg.group_id:
-                if not hasattr(self, 'group_name_cache'):
-                    self.group_name_cache = {}
-                
                 if target_id in self.group_name_cache:
                     group_name = self.group_name_cache[target_id]
                 else:
+                    group_name = target_id 
                     try:
-                        # 确保当前平台是支持 OneBot 协议的平台 (如 aiocqhttp)
                         if hasattr(event, 'bot') and hasattr(event.bot, 'api'):
-                            
-                            payloads = {
-                                "group_id": int(msg.group_id),
-                                "no_cache": False
-                            }
-                            api_ret = await event.bot.api.call_action('get_group_info', **payloads)
-                            
-                            if api_ret and isinstance(api_ret, dict):
-                                # 提取数据 (兼容 {"status": "ok", "data": {"group_name": "..."}} 格式)
-                                data_dict = api_ret.get("data", api_ret) 
-                                fetched_name = data_dict.get("group_name")
-                                
+                            api_ret = await event.bot.api.call_action('get_group_info', group_id=int(msg.group_id), no_cache=False)
+                            if isinstance(api_ret, dict):
+                                fetched_name = api_ret.get("data", api_ret).get("group_name")
                                 if fetched_name:
                                     group_name = fetched_name
-                                    self.group_name_cache[target_id] = fetched_name
-                                else:
-                                    group_name = target_id
-                                    self.group_name_cache[target_id] = target_id
-                            else:
-                                group_name = target_id
-                                self.group_name_cache[target_id] = target_id
-                        else:
-                            group_name = target_id
-                            self.group_name_cache[target_id] = target_id
-                            
-                    except Exception as e:
-                        logger.error(f"获取群名失败 (群号: {target_id}): {e}")
-                        group_name = target_id
-                        self.group_name_cache[target_id] = target_id
-            
+                    except Exception:
+                        pass
+                    
+                    self.group_name_cache[target_id] = group_name
 
+            # ==========================================
+            # 2. 自动更新白名单
+            # ==========================================
             if sender_id and target_id:
                 if sender_id not in self.qq_group_map:
                     self.qq_group_map[sender_id] = []
-                # 只要发现这个人在新群里说话了，立刻拉入白名单并保存到本地 JSON
                 if target_id not in self.qq_group_map[sender_id]:
                     self.qq_group_map[sender_id].append(target_id)
                     self._save_whitelist()
@@ -447,44 +434,70 @@ class MySQLPlugin(Star):
             image_hashes, video_hashes = [], []
             comp_types = []
             
-            # --- 原始数据预处理 ---
             raw_data = msg.raw_message
             if isinstance(raw_data, str):
-                try:
-                    raw_data = json.loads(raw_data)
-                except:
-                    pass
+                try: 
+                    raw_data = json.loads(raw_data) 
+                except: pass
             
-            # --- 【拦截器】：优雅处理系统通知 (Notice) ---
             is_notice = False
             final_message_str = event.message_str.strip()
             
+            # ==========================================
+            # 3.  OneBot v11 系统通知 (Notice) 解析
+            # ==========================================
             if isinstance(raw_data, dict) and raw_data.get("post_type") == "notice":
                 is_notice = True
                 notice_type = raw_data.get("notice_type", "")
+                sub_type = raw_data.get("sub_type", "")
                 
+                # [1] 群文件上传
                 if notice_type == "group_upload":
                     file_info = raw_data.get("file", {})
-                    file_name = file_info.get("name", "未知文件")
                     size_mb = file_info.get("size", 0) / (1024 * 1024)
-                    final_message_str = f"[上传了群文件: {file_name} ({size_mb:.2f}MB)]"
+                    final_message_str = f"[上传了群文件: {file_info.get('name', '未知文件')} ({size_mb:.2f}MB)]"
+                
+                # [2] 群管理员变动
+                elif notice_type == "group_admin":
+                    action = "设置" if sub_type == "set" else "取消"
+                    final_message_str = f"[{action}了群管理员]"
+                    
+                # [3] 群成员减少 (区分主动退群和被踢)
+                elif notice_type == "group_decrease":
+                    action = "被踢出" if sub_type in ["kick", "kick_me"] else "主动退出"
+                    final_message_str = f"[有人{action}了群聊]"
+                    
+                # [4] 群成员增加
                 elif notice_type == "group_increase":
                     final_message_str = "[有人加入了群聊]"
-                elif notice_type == "group_decrease":
-                    final_message_str = "[有人退出了群聊]"
-                elif notice_type == "notify" and raw_data.get("sub_type") == "poke":
-                    final_message_str = "[拍了拍/戳一戳]"
+                    
+                # [5] 群禁言事件
+                elif notice_type == "group_ban":
+                    action = "禁言" if sub_type == "ban" else "解除禁言"
+                    final_message_str = f"[群内发生了{action}操作]"
+                    
+                # [6] 好友添加
+                elif notice_type == "friend_add":
+                    final_message_str = "[新添加了好友]"
+                    
+                # [7] 各种群内互动/提示 (Notify)
+                elif notice_type == "notify":
+                    if sub_type == "poke":
+                        final_message_str = "[拍了拍/戳一戳]"
+                    elif sub_type == "lucky_king":
+                        final_message_str = "[群红包运气王诞生]"
+                    elif sub_type == "honor":
+                        final_message_str = "[群成员荣誉变更]"
+                    else:
+                        final_message_str = f"[群内互动: {sub_type}]"
                 
-                # --- 撤回防丢失 & 数据库反查昵称功能 ---
+                # [8] 消息撤回 (保留数据库溯源昵称的高级功能)
                 elif notice_type in ["group_recall", "friend_recall"]:
                     operator_id = raw_data.get("operator_id")
                     user_id = raw_data.get("user_id")
                     recalled_msg_id = raw_data.get("message_id")
-                    
-                    # 默认先用框架自带的昵称，如果没有就用 QQ 号保底
                     recalled_nickname = getattr(msg.sender, 'nickname', None) or str(user_id)
                     
-                    # 去我们自己的数据库里，捞出被撤回那条消息对应的真实历史昵称
                     if recalled_msg_id:
                         try:
                             async with self.pool.acquire() as conn:
@@ -492,24 +505,21 @@ class MySQLPlugin(Star):
                                     await cursor.execute("SELECT sender FROM messages WHERE message_id = %s", (str(recalled_msg_id),))
                                     row = await cursor.fetchone()
                                     if row and row[0]:
-                                        old_sender_data = json.loads(row[0])
-                                        if old_sender_data.get("nickname"):
-                                            recalled_nickname = old_sender_data.get("nickname")
-                        except Exception:
-                            pass 
+                                        recalled_nickname = json.loads(row[0]).get("nickname", recalled_nickname)
+                        except: pass 
 
-                    if notice_type == "group_recall":
-                        if str(operator_id) == str(user_id):
-                            final_message_str = f"[{recalled_nickname} 撤回了一条消息]"
-                        else:
-                            final_message_str = f"[管理员撤回了 {recalled_nickname} 的一条消息]"
+                    if notice_type == "group_recall" and str(operator_id) != str(user_id):
+                        final_message_str = f"[管理员撤回了 {recalled_nickname} 的消息]"
                     else:
                         final_message_str = f"[{recalled_nickname} 撤回了一条消息]"
                 
+                # [兜底] 如果官方未来出了新的 notice_type
                 else:
-                    final_message_str = f"[群系统通知: {notice_type}]"
+                    final_message_str = f"[系统通知: {notice_type}]"
 
-            # --- 如果是常规聊天消息，再去解析并下载媒体文件 ---
+            # ==========================================
+            # 4. 常规媒体解析与文本清洗
+            # ==========================================
             if not is_notice:
                 if isinstance(raw_data, dict) and "message" in raw_data:
                     raw_data = raw_data["message"]
@@ -522,65 +532,49 @@ class MySQLPlugin(Star):
                         data = segment.get("data", {})
                         comp_types.append(seg_type) 
                         
-                        if seg_type == "video":
-                            url = data.get("url") or data.get("file") or data.get("file_id")
-                            if url and isinstance(url, str) and url.startswith("http"):
-                                h = await self._process_video(url, msg_month)
-                                if h: video_hashes.append(h)
-                                
+                        url = data.get("url") or data.get("file") or data.get("file_id")
+                        if not url or not str(url).startswith("http"): continue
+                        
+                        if seg_type == "video" or (seg_type == "file" and str(data.get("name", url)).lower().endswith(('.mp4', '.mov', '.avi', '.mkv'))):
+                            h = await self._process_video(url, msg_month)
+                            if h: video_hashes.append(h)
                         elif seg_type == "image":
-                            url = data.get("url") or (data.get("file") if str(data.get("file", "")).startswith("http") else None)
-                            if url:
-                                h = await self._process_image(url, msg_month)
-                                if h: image_hashes.append(h)
-                                
-                        elif seg_type == "file":
-                            url = data.get("url")
-                            file_name = str(data.get("name", data.get("file", ""))).lower()
-                            if url and url.startswith("http") and file_name.endswith(('.mp4', '.mov', '.avi', '.mkv')):
-                                h = await self._process_video(url, msg_month)
-                                if h: video_hashes.append(h)
+                            h = await self._process_image(url, msg_month)
+                            if h: image_hashes.append(h)
 
-                # 框架组件兜底抓取
                 if not image_hashes and not video_hashes:
                     for component in msg.message:
-                        comp_types.append(type(component).__name__.lower())
-                        if type(component).__name__.lower() == "video":
+                        c_type = type(component).__name__.lower()
+                        comp_types.append(c_type)
+                        if c_type == "video":
                             url = getattr(component, 'url', getattr(component, 'file', getattr(component, 'path', getattr(component, 'file_id', None))))
                             if url and isinstance(url, str) and url.startswith("http"):
                                 h = await self._process_video(url, msg_month)
                                 if h: video_hashes.append(h)
 
-                # 文本清洗与空白兜底逻辑
                 if image_hashes or video_hashes:
                     final_message_str = re.sub(r'\[(File|Video|Image|文件|视频|图片|不支持的格式.*?)\]', '', final_message_str, flags=re.IGNORECASE).strip()
 
                 if not final_message_str and not image_hashes and not video_hashes:
                     types_str = " ".join(comp_types).lower()
-                    if "video" in types_str:
-                        final_message_str = "[视频 (链接获取失败/未开放外链)]" 
-                    elif "nudge" in types_str or "poke" in types_str:
-                        final_message_str = "[拍了拍/戳一戳]"
-                    elif "face" in types_str or "mface" in types_str:
-                        final_message_str = "[互动表情]"
-                    elif "record" in types_str:
-                        final_message_str = "[语音消息]"
-                    elif "json" in types_str or "xml" in types_str:
-                        final_message_str = "[卡片/小程序消息]"
-                    else:
-                        final_message_str = f"[特殊互动格式: {','.join(set(comp_types))}]"
+                    if "video" in types_str: final_message_str = "[视频 (链接获取失败/未开放外链)]" 
+                    elif "nudge" in types_str or "poke" in types_str: final_message_str = "[拍了拍/戳一戳]"
+                    elif "face" in types_str or "mface" in types_str: final_message_str = "[互动表情]"
+                    elif "record" in types_str: final_message_str = "[语音消息]"
+                    elif "json" in types_str or "xml" in types_str: final_message_str = "[卡片/小程序消息]"
+                    elif comp_types: final_message_str = f"[特殊互动格式: {','.join(set(comp_types))}]"
 
-            # 统一收集发件人信息
+            # ==========================================
+            # 5. 组装发件人与执行入库
+            # ==========================================
             sender_data = {
                 'user_id': msg.sender.user_id,
                 'nickname': msg.sender.nickname,
                 'platform_id': getattr(meta, 'id', 'unknown')
             }
 
-            # 执行入库
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
-                    #  修改点：增加了 group_name 字段及其占位符 %s
                     await cursor.execute("""
                         INSERT INTO messages (message_id, platform_type, self_id, session_id, group_id, group_name,
                                               sender, message_str, raw_message, image_ids, video_ids,
@@ -592,18 +586,22 @@ class MySQLPlugin(Star):
                         event.get_self_id() if hasattr(event, 'get_self_id') else msg.self_id,
                         event.session_id,
                         msg.group_id or None,
-                        group_name,                                  #  传入提取到的群名
+                        group_name,                                          
                         json.dumps(sender_data, ensure_ascii=False),
                         final_message_str,
-                        json.dumps(msg.raw_message, ensure_ascii=False),
+                        json.dumps(msg.raw_message, ensure_ascii=False) if not isinstance(msg.raw_message, str) else msg.raw_message,
                         json.dumps(image_hashes),
                         json.dumps(video_hashes),
                         msg.timestamp,
                         dt_object,
                         msg_month
                     ))
+                # 强行提交，防掉单
+                await conn.commit()
+                
         except Exception as e:
-            logger.error(f"日志记录异常: {e}")
+            import traceback
+            logger.error(f"消息入库异常: {e}\n{traceback.format_exc()}")
 
     # ------------------ 自动清理逻辑 ------------------
     async def _cleanup_loop(self):
@@ -630,17 +628,18 @@ class MySQLPlugin(Star):
                         image_ids = json.loads(image_ids_json or "[]")
                         video_ids = json.loads(video_ids_json or "[]")
                         for img_hash in image_ids:
-                            await self._delete_asset_if_unused("image_assets", "image_hash", img_hash)
+                            await self._delete_asset_if_unused("image_assets", "image_hash", "image_ids", img_hash)
                         for vid_hash in video_ids:
-                            await self._delete_asset_if_unused("video_assets", "video_hash", vid_hash)
+                            await self._delete_asset_if_unused("video_assets", "video_hash", "video_ids", vid_hash)
 
                     await cursor.execute("DELETE FROM messages WHERE month=%s", (month,))
                     logger.info(f"自动删除未保存月份消息: {month}")
 
-    async def _delete_asset_if_unused(self, table: str, hash_column: str, asset_hash: str):
+    
+    async def _delete_asset_if_unused(self, table: str, hash_column: str, msg_ids_column: str, asset_hash: str):
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                await cursor.execute(f"SELECT COUNT(*) FROM messages WHERE JSON_CONTAINS({hash_column.replace('_assets','_ids')}, %s)", (json.dumps(asset_hash),))
+                await cursor.execute(f"SELECT COUNT(*) FROM messages WHERE JSON_CONTAINS({msg_ids_column}, %s)", (json.dumps(asset_hash),))
                 count = (await cursor.fetchone())[0]
                 if count == 0:
                     await cursor.execute(f"SELECT file_path FROM {table} WHERE {hash_column}=%s", (asset_hash,))
@@ -673,10 +672,20 @@ class MySQLPlugin(Star):
             logger.error(f"标记保存失败: {e}")
             yield event.plain_result("指令执行失败，请检查控制台报错。")
 
+    
     async def terminate(self):
+        if getattr(self, "site", None):
+            try:
+                await self.site.stop()
+            except Exception:
+                pass
+                
         if getattr(self, "web_runner", None):
-            await self.web_runner.cleanup()
-            logger.info("内置 WebUI 已安全关闭")
+            try:
+                await self.web_runner.cleanup()
+                logger.info("内置 WebUI 已安全关闭")
+            except Exception:
+                pass
             
         if getattr(self, "pool", None):
             self.pool.close()
