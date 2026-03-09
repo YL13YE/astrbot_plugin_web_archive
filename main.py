@@ -396,45 +396,30 @@ class MySQLPlugin(Star):
             sender_id = str(msg.sender.user_id)
             target_id = str(msg.group_id) if msg.group_id else str(event.session_id)
             
+            # 获取并缓存群名
+            if not hasattr(self, 'group_name_cache'):
+                self.group_name_cache = {}
+                
             group_name = getattr(msg, 'group_name', None)
             
             if not group_name and msg.group_id:
-                if not hasattr(self, 'group_name_cache'):
-                    self.group_name_cache = {}
-                
                 if target_id in self.group_name_cache:
                     group_name = self.group_name_cache[target_id]
                 else:
+                    group_name = target_id 
                     try:
                         if hasattr(event, 'bot') and hasattr(event.bot, 'api'):
-                            payloads = {
-                                "group_id": int(msg.group_id),
-                                "no_cache": False
-                            }
-                            api_ret = await event.bot.api.call_action('get_group_info', **payloads)
-                            
-                            if api_ret and isinstance(api_ret, dict):
-                                data_dict = api_ret.get("data", api_ret) 
-                                fetched_name = data_dict.get("group_name")
-                                
+                            api_ret = await event.bot.api.call_action('get_group_info', group_id=int(msg.group_id), no_cache=False)
+                            if isinstance(api_ret, dict):
+                                fetched_name = api_ret.get("data", api_ret).get("group_name")
                                 if fetched_name:
                                     group_name = fetched_name
-                                    self.group_name_cache[target_id] = fetched_name
-                                else:
-                                    group_name = target_id
-                                    self.group_name_cache[target_id] = target_id
-                            else:
-                                group_name = target_id
-                                self.group_name_cache[target_id] = target_id
-                        else:
-                            group_name = target_id
-                            self.group_name_cache[target_id] = target_id
-                            
-                    except Exception as e:
-                        logger.error(f"获取群名失败 (群号: {target_id}): {e}")
-                        group_name = target_id
-                        self.group_name_cache[target_id] = target_id
-            
+                    except Exception:
+                        pass
+                    
+                    self.group_name_cache[target_id] = group_name
+
+            # 更新白名单
             if sender_id and target_id:
                 if sender_id not in self.qq_group_map:
                     self.qq_group_map[sender_id] = []
@@ -447,37 +432,52 @@ class MySQLPlugin(Star):
             
             raw_data = msg.raw_message
             if isinstance(raw_data, str):
-                try:
-                    raw_data = json.loads(raw_data)
-                except:
-                    pass
+                try: 
+                    raw_data = json.loads(raw_data) 
+                except: pass
             
             is_notice = False
             final_message_str = event.message_str.strip()
             
+            # 处理系统通知 (Notice)
             if isinstance(raw_data, dict) and raw_data.get("post_type") == "notice":
                 is_notice = True
                 notice_type = raw_data.get("notice_type", "")
+                sub_type = raw_data.get("sub_type", "")
                 
                 if notice_type == "group_upload":
                     file_info = raw_data.get("file", {})
-                    file_name = file_info.get("name", "未知文件")
                     size_mb = file_info.get("size", 0) / (1024 * 1024)
-                    final_message_str = f"[上传了群文件: {file_name} ({size_mb:.2f}MB)]"
+                    final_message_str = f"[上传了群文件: {file_info.get('name', '未知文件')} ({size_mb:.2f}MB)]"
+                elif notice_type == "group_admin":
+                    action = "设置" if sub_type == "set" else "取消"
+                    final_message_str = f"[{action}了群管理员]"
+                elif notice_type == "group_decrease":
+                    action = "被踢出" if sub_type in ["kick", "kick_me"] else "主动退出"
+                    final_message_str = f"[有人{action}了群聊]"
                 elif notice_type == "group_increase":
                     final_message_str = "[有人加入了群聊]"
-                elif notice_type == "group_decrease":
-                    final_message_str = "[有人退出了群聊]"
-                elif notice_type == "notify" and raw_data.get("sub_type") == "poke":
-                    final_message_str = "[拍了拍/戳一戳]"
-                
+                elif notice_type == "group_ban":
+                    action = "禁言" if sub_type == "ban" else "解除禁言"
+                    final_message_str = f"[群内发生了{action}操作]"
+                elif notice_type == "friend_add":
+                    final_message_str = "[新添加了好友]"
+                elif notice_type == "notify":
+                    if sub_type == "poke":
+                        final_message_str = "[拍了拍/戳一戳]"
+                    elif sub_type == "lucky_king":
+                        final_message_str = "[群红包运气王诞生]"
+                    elif sub_type == "honor":
+                        final_message_str = "[群成员荣誉变更]"
+                    else:
+                        final_message_str = f"[群内互动: {sub_type}]"
                 elif notice_type in ["group_recall", "friend_recall"]:
                     operator_id = raw_data.get("operator_id")
                     user_id = raw_data.get("user_id")
                     recalled_msg_id = raw_data.get("message_id")
-                    
                     recalled_nickname = getattr(msg.sender, 'nickname', None) or str(user_id)
                     
+                    # 从数据库反查被撤回消息的发送者真实昵称
                     if recalled_msg_id:
                         try:
                             async with self.pool.acquire() as conn:
@@ -485,87 +485,91 @@ class MySQLPlugin(Star):
                                     await cursor.execute("SELECT sender FROM messages WHERE message_id = %s", (str(recalled_msg_id),))
                                     row = await cursor.fetchone()
                                     if row and row[0]:
-                                        old_sender_data = json.loads(row[0])
-                                        if old_sender_data.get("nickname"):
-                                            recalled_nickname = old_sender_data.get("nickname")
-                        except Exception:
-                            pass 
+                                        recalled_nickname = json.loads(row[0]).get("nickname", recalled_nickname)
+                        except: pass 
 
-                    if notice_type == "group_recall":
-                        if str(operator_id) == str(user_id):
-                            final_message_str = f"[{recalled_nickname} 撤回了一条消息]"
-                        else:
-                            final_message_str = f"[管理员撤回了 {recalled_nickname} 的一条消息]"
+                    if notice_type == "group_recall" and str(operator_id) != str(user_id):
+                        final_message_str = f"[管理员撤回了 {recalled_nickname} 的消息]"
                     else:
                         final_message_str = f"[{recalled_nickname} 撤回了一条消息]"
-                
                 else:
-                    final_message_str = f"[群系统通知: {notice_type}]"
+                    final_message_str = f"[系统通知: {notice_type}]"
 
+            # 处理常规消息与媒体提取
             if not is_notice:
-                if isinstance(raw_data, dict) and "message" in raw_data:
-                    raw_data = raw_data["message"]
+                msg_list = raw_data.get("message", raw_data) if isinstance(raw_data, dict) else raw_data
 
-                if isinstance(raw_data, list):
-                    for segment in raw_data:
+                if isinstance(msg_list, list):
+                    for segment in msg_list:
                         if not isinstance(segment, dict): continue
                         
                         seg_type = segment.get("type", "")
-                        data = segment.get("data", {})
                         comp_types.append(seg_type) 
                         
-                        if seg_type == "video":
-                            url = data.get("url") or data.get("file") or data.get("file_id")
-                            if url and isinstance(url, str) and url.startswith("http"):
+                        data = segment.get("data", {})
+                        url = data.get("url") or data.get("file") or data.get("file_id")
+                        
+                        if url and isinstance(url, str) and url.startswith("http"):
+                            if seg_type == "video" or (seg_type == "file" and str(data.get("name", url)).lower().endswith(('.mp4', '.mov', '.avi', '.mkv'))):
                                 h = await self._process_video(url, msg_month)
                                 if h: video_hashes.append(h)
-                                
-                        elif seg_type == "image":
-                            url = data.get("url") or (data.get("file") if str(data.get("file", "")).startswith("http") else None)
-                            if url:
+                            elif seg_type == "image":
                                 h = await self._process_image(url, msg_month)
                                 if h: image_hashes.append(h)
-                                
-                        elif seg_type == "file":
-                            url = data.get("url")
-                            file_name = str(data.get("name", data.get("file", ""))).lower()
-                            if url and url.startswith("http") and file_name.endswith(('.mp4', '.mov', '.avi', '.mkv')):
-                                h = await self._process_video(url, msg_month)
-                                if h: video_hashes.append(h)
 
+                # 框架原生组件兜底
                 if not image_hashes and not video_hashes:
                     for component in msg.message:
-                        comp_types.append(type(component).__name__.lower())
-                        if type(component).__name__.lower() == "video":
+                        c_type = type(component).__name__.lower()
+                        comp_types.append(c_type)
+                        if c_type == "video":
                             url = getattr(component, 'url', getattr(component, 'file', getattr(component, 'path', getattr(component, 'file_id', None))))
                             if url and isinstance(url, str) and url.startswith("http"):
                                 h = await self._process_video(url, msg_month)
                                 if h: video_hashes.append(h)
 
+                # 清理文本中的媒体占位符
                 if image_hashes or video_hashes:
                     final_message_str = re.sub(r'\[(File|Video|Image|文件|视频|图片|不支持的格式.*?)\]', '', final_message_str, flags=re.IGNORECASE).strip()
 
+                # 空白文本的兜底匹配
                 if not final_message_str and not image_hashes and not video_hashes:
-                    types_str = " ".join(comp_types).lower()
-                    if "video" in types_str:
-                        final_message_str = "[视频 (链接获取失败/未开放外链)]" 
-                    elif "nudge" in types_str or "poke" in types_str:
-                        final_message_str = "[拍了拍/戳一戳]"
-                    elif "face" in types_str or "mface" in types_str:
-                        final_message_str = "[互动表情]"
-                    elif "record" in types_str:
-                        final_message_str = "[语音消息]"
-                    elif "json" in types_str or "xml" in types_str:
-                        final_message_str = "[卡片/小程序消息]"
-                    else:
-                        final_message_str = f"[特殊互动格式: {','.join(set(comp_types))}]"
+                    segment_msg_map = {
+                        "record": "[语音消息]",
+                        "video": "[视频获取失败]",
+                        "face": "[QQ表情]",
+                        "mface": "[商城表情]",
+                        "share": "[分享链接]",
+                        "music": "[音乐卡片]",
+                        "reply": "[回复消息]",
+                        "forward": "[合并转发记录]",
+                        "xml": "[卡片消息 (XML)]",
+                        "json": "[卡片消息 (JSON)]",
+                        "poke": "[拍了拍/戳一戳]",
+                        "nudge": "[拍了拍/戳一戳]",
+                        "location": "[位置分享]",
+                        "gift": "[群礼物]"
+                    }
+                    
+                    for c_type in [t.lower() for t in comp_types]:
+                        if c_type in segment_msg_map:
+                            final_message_str = segment_msg_map[c_type]
+                            break
+                            
+                    if not final_message_str:
+                        if comp_types:
+                            final_message_str = f"[{','.join(set(comp_types))} 类型消息]"
+                        else:
+                            final_message_str = "[未知类型消息]"
 
+            # 组装发件人数据
             sender_data = {
                 'user_id': msg.sender.user_id,
                 'nickname': msg.sender.nickname,
                 'platform_id': getattr(meta, 'id', 'unknown')
             }
 
+            # 执行数据库插入
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute("""
@@ -582,15 +586,19 @@ class MySQLPlugin(Star):
                         group_name,                                          
                         json.dumps(sender_data, ensure_ascii=False),
                         final_message_str,
-                        json.dumps(msg.raw_message, ensure_ascii=False),
+                        json.dumps(msg.raw_message, ensure_ascii=False) if not isinstance(msg.raw_message, str) else msg.raw_message,
                         json.dumps(image_hashes),
                         json.dumps(video_hashes),
                         msg.timestamp,
                         dt_object,
                         msg_month
                     ))
+                # 提交事务
+                await conn.commit()
+                
         except Exception as e:
-            logger.error(f"日志记录异常: {e}")
+            import traceback
+            logger.error(f"消息入库异常: {e}\n{traceback.format_exc()}")
 
     # ------------------ 自动清理逻辑 ------------------
     async def _cleanup_loop(self):
